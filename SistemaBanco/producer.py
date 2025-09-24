@@ -1,21 +1,16 @@
-# producer.py
-import os, json, uuid
+import json, uuid
 import pika
-from dotenv import load_dotenv
-load_dotenv()
+import time
+from connection import get_channel
+conn, ch = get_channel()
 
-url = os.getenv("CLOUDAMQP_URL")
-params = pika.URLParameters(url)
-conn = pika.BlockingConnection(params)
-ch = conn.channel()
-
-def send_transaction(from_acc, to_acc, amount):
+def enviar_operacao(conta_origem, conta_destino, valor):
     payload = {
         "id": str(uuid.uuid4()),
-        "from": from_acc,
-        "to": to_acc,
-        "amount": amount,
-        "timestamp": __import__('time').time()
+        "conta_origem": conta_origem,
+        "conta_destino": conta_destino,
+        "valor": valor,
+        "data_hora": time.time()
     }
     body = json.dumps(payload)
     ch.basic_publish(
@@ -28,8 +23,8 @@ def send_transaction(from_acc, to_acc, amount):
             headers={'x-retries': 0}
         )
     )
-    print("Sent:", payload)
+    print("Enviado:", payload)
 
 if __name__ == "__main__":
-    send_transaction("111-222", "333-444", 150.75)
+    enviar_operacao("111-222", "333-444", 5000)
     conn.close()

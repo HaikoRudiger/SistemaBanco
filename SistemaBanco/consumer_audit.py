@@ -1,22 +1,16 @@
-# consumer_audit.py
-import os, json
-import pika
-from dotenv import load_dotenv
-load_dotenv()
+import json
+from connection import get_channel
 
-url = os.getenv("CLOUDAMQP_URL")
-params = pika.URLParameters(url)
-conn = pika.BlockingConnection(params)
-ch = conn.channel()
+conn, ch = get_channel()
 
-def write_audit_log(payload):
+def registrar_auditoria(payload):
     # apenas simula gravação em log (escreva em DB/arquivo append)
-    print("AUDIT:", payload['id'], payload['from'], "->", payload['to'], payload['amount'])
+    print("AUDITORIA:", payload['id'], payload['conta_origem'], "->", payload['conta_destino'], payload['valor'])
 
 def callback(ch, method, properties, body):
     try:
         data = json.loads(body)
-        write_audit_log(data)
+        registrar_auditoria(data)
         ch.basic_ack(delivery_tag=method.delivery_tag)
     except Exception as e:
         print("Audit error:", e)

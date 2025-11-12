@@ -15,6 +15,7 @@ from connection import get_channel
 # Configurações e globais
 # -------------------------
 MAX_RETRIES = 3
+
 SERVICE_ID = os.getenv("SERVICE_ID")
 if not SERVICE_ID or "python - <<" in SERVICE_ID:
     SERVICE_ID = f"svc-{random.randint(1000, 9999)}"
@@ -31,7 +32,7 @@ if not API_KEY:
 _fx_client = currencyapicom.Client(API_KEY)
 
 # cache simples de taxas: { (from,to): (rate, ts) }
-_FX_CACHE = {}
+_FX_CACHE: dict[tuple[str, str], tuple[float, float]] = {}
 _FX_TTL_SECONDS = 60
 
 
@@ -41,19 +42,19 @@ _FX_TTL_SECONDS = 60
 def publicar(ch, rk: str, payload: dict, headers: dict | None = None):
     """Publica no exchange.principal com routing key rk."""
     ch.basic_publish(
-        exchange='exchange.principal',
+        exchange="exchange.principal",
         routing_key=rk,
         body=json.dumps(payload),
         properties=pika.BasicProperties(
             delivery_mode=2,
-            content_type='application/json',
-            headers=headers or {}
-        )
+            content_type="application/json",
+            headers=headers or {},
+        ),
     )
 
 
 # -------------------------
-# Conversão de moeda (ajustada p/ plano free)
+# Conversão de moeda (plano free da CurrencyAPI)
 # -------------------------
 def _fx_get_rate(from_currency: str, to_currency: str) -> float:
     """
@@ -70,11 +71,10 @@ def _fx_get_rate(from_currency: str, to_currency: str) -> float:
     if cached and (now - cached[1]) < _FX_TTL_SECONDS:
         return cached[0]
 
-    # Chama latest sem parâmetros (sempre base USD no free)
     resp = _fx_client.latest()
     try:
         data = resp["data"]
-        usd_to   = 1.0 if t == "USD" else float(data[t]["value"])
+        usd_to = 1.0 if t == "USD" else float(data[t]["value"])
         usd_from = 1.0 if f == "USD" else float(data[f]["value"])
         rate = usd_to / usd_from
     except Exception as e:
@@ -84,7 +84,9 @@ def _fx_get_rate(from_currency: str, to_currency: str) -> float:
     return rate
 
 
-def converter_moeda(amount: float, from_currency: str, to_currency: str) -> tuple[float, float]:
+def converter_moeda(
+    amount: float, from_currency: str, to_currency: str
+) -> tuple[float, float]:
     """
     Converte amount de from_currency para to_currency.
     Retorna (valor_convertido, fx_rate).
@@ -110,7 +112,7 @@ def processar_operacao(payload: dict) -> bool:
 
 
 # -------------------------
-# Worker: consome fila.cluster.work
+# Worker: consome fila.cluster.work (todos os nós fazem isso)
 # -------------------------
 def worker_consume():
     conn_w, ch_w = get_channel()
@@ -121,14 +123,19 @@ def worker_consume():
         try:
             data = json.loads(body)
         except Exception:
-            ch.basic_publish(exchange='exchange.dlx', routing_key='', body=body, properties=properties)
+            ch.basic_publish(
+                exchange="exchange.dlx",
+                routing_key="",
+                body=body,
+                properties=properties,
+            )
             ch.basic_ack(delivery_tag=method.delivery_tag)
             return
 
-        headers = (properties.headers or {})
-        retries = int(headers.get('x-retries', 0))
+        headers = properties.headers or {}
+        retries = int(headers.get("x-retries", 0))
 
-        # 2) Conversão de moeda (antes de qualquer regra)
+        # 2) Conversão de moeda
         origem = data.get("moeda", "BRL")
         base = os.getenv("CURRENCY_BASE", "USD")  # moeda base do sistema
         try:
@@ -143,111 +150,132 @@ def worker_consume():
             print(f"[{SERVICE_ID}] falha conversão moeda: {e}")
             retries += 1
             if retries > MAX_RETRIES:
-                publicar(ch, 'audit.falha', {
-                    "evento": "falha-definitiva",
-                    "id": data.get("id"),
-                    "servico": SERVICE_ID,
-                    "erro": f"FX: {e}",
-                    "ts": datetime.now(timezone.utc).isoformat()
-                })
+                publicar(
+                    ch,
+                    "audit.falha",
+                    {
+                        "evento": "falha-definitiva",
+                        "id": data.get("id"),
+                        "servico": SERVICE_ID,
+                        "erro": f"FX: {e}",
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
                 ch.basic_publish(
-                    exchange='exchange.dlx',
-                    routing_key='',
+                    exchange="exchange.dlx",
+                    routing_key="",
                     body=json.dumps(data),
                     properties=pika.BasicProperties(
                         delivery_mode=2,
-                        content_type='application/json',
-                        headers={'x-retries': retries}
-                    )
+                        content_type="application/json",
+                        headers={"x-retries": retries},
+                    ),
                 )
                 ch.basic_ack(delivery_tag=method.delivery_tag)
             else:
                 rk_retry = f"retry.{retries}"
                 ch.basic_publish(
-                    exchange='exchange.retry',
+                    exchange="exchange.retry",
                     routing_key=rk_retry,
                     body=json.dumps(data),
                     properties=pika.BasicProperties(
                         delivery_mode=2,
-                        content_type='application/json',
-                        headers={'x-retries': retries}
-                    )
+                        content_type="application/json",
+                        headers={"x-retries": retries},
+                    ),
                 )
                 ch.basic_ack(delivery_tag=method.delivery_tag)
             return
 
         # 3) Auditoria pré
-        publicar(ch, 'audit.pre', {
-            "evento": "pre-processamento",
-            "id": data.get("id"),
-            "servico": SERVICE_ID,
-            "valor_original": data.get("valor"),
-            "moeda_origem": origem,
-            "valor_convertido": data.get("valor_convertido"),
-            "moeda_base": base,
-            "fx_rate": data.get("fx_rate"),
-            "ts": datetime.now(timezone.utc).isoformat()
-        })
+        publicar(
+            ch,
+            "audit.pre",
+            {
+                "evento": "pre-processamento",
+                "id": data.get("id"),
+                "servico": SERVICE_ID,
+                "valor_original": data.get("valor"),
+                "moeda_origem": origem,
+                "valor_convertido": data.get("valor_convertido"),
+                "moeda_base": base,
+                "fx_rate": data.get("fx_rate"),
+                "ts": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
         # 4) Processamento + Retry/DLQ + Auditoria pós/notificação
         try:
             ok = processar_operacao(data)
             if ok:
-                publicar(ch, 'audit.post', {
-                    "evento": "pos-processamento",
-                    "id": data.get("id"),
-                    "servico": SERVICE_ID,
-                    "ts": datetime.now(timezone.utc).isoformat()
-                })
+                publicar(
+                    ch,
+                    "audit.post",
+                    {
+                        "evento": "pos-processamento",
+                        "id": data.get("id"),
+                        "servico": SERVICE_ID,
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
                 data_out = dict(data)
                 data_out["status"] = "SUCESSO"
-                publicar(ch, 'notify.transacao', data_out)
+                publicar(ch, "notify.transacao", data_out)
                 ch.basic_ack(delivery_tag=method.delivery_tag)
         except Exception as e:
             print(f"[{SERVICE_ID}] erro processamento: {e}")
             retries += 1
             if retries > MAX_RETRIES:
-                publicar(ch, 'audit.falha', {
-                    "evento": "falha-definitiva",
-                    "id": data.get("id"),
-                    "servico": SERVICE_ID,
-                    "erro": str(e),
-                    "ts": datetime.now(timezone.utc).isoformat()
-                })
+                publicar(
+                    ch,
+                    "audit.falha",
+                    {
+                        "evento": "falha-definitiva",
+                        "id": data.get("id"),
+                        "servico": SERVICE_ID,
+                        "erro": str(e),
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
                 ch.basic_publish(
-                    exchange='exchange.dlx',
-                    routing_key='',
+                    exchange="exchange.dlx",
+                    routing_key="",
                     body=json.dumps(data),
                     properties=pika.BasicProperties(
                         delivery_mode=2,
-                        content_type='application/json',
-                        headers={'x-retries': retries}
-                    )
+                        content_type="application/json",
+                        headers={"x-retries": retries},
+                    ),
                 )
                 ch.basic_ack(delivery_tag=method.delivery_tag)
             else:
                 rk_retry = f"retry.{retries}"
                 ch.basic_publish(
-                    exchange='exchange.retry',
+                    exchange="exchange.retry",
                     routing_key=rk_retry,
                     body=json.dumps(data),
                     properties=pika.BasicProperties(
                         delivery_mode=2,
-                        content_type='application/json',
-                        headers={'x-retries': retries}
-                    )
+                        content_type="application/json",
+                        headers={"x-retries": retries},
+                    ),
                 )
                 ch.basic_ack(delivery_tag=method.delivery_tag)
 
-    ch_w.basic_consume(queue='fila.cluster.work', on_message_callback=on_msg)
+    ch_w.basic_consume(queue="fila.cluster.work", on_message_callback=on_msg)
     print(f"[{SERVICE_ID}] Worker ON consumindo fila.cluster.work")
     ch_w.start_consuming()
 
 
 # -------------------------
 # Líder: consome fila.transacoes e distribui
+#           -> usa CONSUMIDOR EXCLUSIVO
 # -------------------------
-def leader_loop():
+def leader_consume():
+    """
+    Tenta atuar como LÍDER usando um consumer EXCLUSIVO na fila.transacoes.
+    Se já existir líder, o broker fecha o canal e lançamos exceção.
+    """
     conn_l, ch_l = get_channel()
     ch_l.basic_qos(prefetch_count=1)
 
@@ -255,92 +283,102 @@ def leader_loop():
         try:
             data = json.loads(body)
         except Exception:
-            ch.basic_publish(exchange='exchange.dlx', routing_key='', body=body, properties=properties)
+            ch.basic_publish(
+                exchange="exchange.dlx",
+                routing_key="",
+                body=body,
+                properties=properties,
+            )
             ch.basic_ack(delivery_tag=method.delivery_tag)
             return
 
-        publicar(ch, 'audit.recebido_lider', {
-            "evento": "recebido-lider",
-            "id": data.get("id"),
-            "lider": SERVICE_ID,
-            "ts": datetime.now(timezone.utc).isoformat()
-        })
+        publicar(
+            ch,
+            "audit.recebido_lider",
+            {
+                "evento": "recebido-lider",
+                "id": data.get("id"),
+                "lider": SERVICE_ID,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
+        # reencaminha para o pool de workers
         ch.basic_publish(
-            exchange='exchange.cluster',
-            routing_key='work',
+            exchange="exchange.cluster",
+            routing_key="work",
             body=json.dumps(data),
             properties=pika.BasicProperties(
                 delivery_mode=2,
-                content_type='application/json',
-                headers=properties.headers or {}
-            )
+                content_type="application/json",
+                headers=properties.headers or {},
+            ),
         )
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
-    ch_l.basic_consume(queue='fila.transacoes', on_message_callback=on_leader_msg)
-    print(f"[{SERVICE_ID}] ATUANDO COMO LÍDER (distribuindo do principal -> cluster.work)")
-    ch_l.start_consuming()
-
-
-# -------------------------
-# Eleição (startup, líder único)
-# -------------------------
-def try_become_leader():
-    """
-    Eleição de líder corrigida:
-      - Testa existência de 'leader.lock' em modo passive.
-      - Se não existe, cria fila exclusiva (auto_delete). Só 1 nó consegue.
-      - Demais nós atuam como workers e ficam rechecando.
-    """
-    while True:
-        time.sleep(random.uniform(1.0, 2.5))
-
+    # Aqui está a mágica: exclusive=True
+    try:
+        ch_l.basic_consume(
+            queue="fila.transacoes",
+            on_message_callback=on_leader_msg,
+            exclusive=True,
+        )
+        print(
+            f"[{SERVICE_ID}] >>> ELEITO LÍDER (exclusive consumer em fila.transacoes, uptime={uptime()}s)"
+        )
+        ch_l.start_consuming()
+    finally:
         try:
-            conn_chk, ch_chk = get_channel()
-            try:
-                # Se existir, já tem líder
-                ch_chk.queue_declare(queue='leader.lock', passive=True)
-                if not globals().get("_worker_started"):
-                    globals()["_worker_started"] = True
-                    threading.Thread(target=worker_consume, daemon=True).start()
-                conn_chk.close()
-                time.sleep(4.0)
-                continue
-            except pika.exceptions.ChannelClosedByBroker:
-                # Não existe -> podemos tentar criar a fila lock
-                try:
-                    conn_lock, ch_lock = get_channel()
-                    ch_lock.queue_declare(
-                        queue='leader.lock',
-                        durable=False,
-                        exclusive=True,
-                        auto_delete=True,
-                        arguments={'x-expires': 15000}
-                    )
-                    print(f"[{SERVICE_ID}] ELEITO LÍDER (uptime={uptime()}s)")
-                    t_worker = threading.Thread(target=worker_consume, daemon=True)
-                    t_worker.start()
-                    try:
-                        leader_loop()
-                    finally:
-                        try: conn_lock.close()
-                        except: pass
-                except Exception:
-                    if not globals().get("_worker_started"):
-                        globals()["_worker_started"] = True
-                        threading.Thread(target=worker_consume, daemon=True).start()
-                    time.sleep(3.0)
+            conn_l.close()
         except Exception:
-            if not globals().get("_worker_started"):
-                globals()["_worker_started"] = True
-                threading.Thread(target=worker_consume, daemon=True).start()
-            time.sleep(3.0)
+            pass
+
+
+# -------------------------
+# Loop de eleição / Atividade das nodes
+# -------------------------
+def election_loop():
+    """
+    Todos os nós executam este loop:
+      - tentam virar líder (exclusive consumer em fila.transacoes)
+      - se não conseguirem, continuam como workers
+      - se o líder cair (conexão fecha), outro nó assumirá na próxima tentativa
+
+    Isso implementa:
+      * eleição inicial
+      * eleição pós queda do servidor
+      * atividade constante das nodes
+    """
+    # Garantir que sempre temos o worker rodando
+    global _worker_started
+    if not globals().get("_worker_started"):
+        globals()["_worker_started"] = True
+        t_worker = threading.Thread(target=worker_consume, daemon=True)
+        t_worker.start()
+
+    while True:
+        try:
+            # tenta ser líder
+            leader_consume()
+            # se sair de leader_consume sem erro explícito,
+            # é porque a conexão/consumo acabou -> volta e tenta de novo
+        except pika.exceptions.ChannelClosedByBroker:
+            # não conseguiu ser exclusivo (já tem líder)
+            print(
+                f"[{SERVICE_ID}] não conseguiu virar líder (já existe outro). Continuando como worker..."
+            )
+        except Exception as e:
+            print(f"[{SERVICE_ID}] erro no loop de líder: {e}")
+
+        # espera um pouco antes da próxima tentativa de eleição
+        time.sleep(random.uniform(2.0, 4.0))
 
 
 # -------------------------
 # Main
 # -------------------------
 if __name__ == "__main__":
-    print(f"[{SERVICE_ID}] iniciando serviço de transação (eleição + FX + processamento)")
-    try_become_leader()
+    print(
+        f"[{SERVICE_ID}] iniciando serviço de transação (ELEIÇÃO EXCLUSIVA + FX + processamento)"
+    )
+    election_loop()

@@ -3,36 +3,39 @@ from connection import get_channel
 conn, ch = get_channel()
 
 # Exchanges
-ch.exchange_declare(exchange='exchange.transacoes', exchange_type='topic', durable=True)
-ch.exchange_declare(exchange='exchange.retry', exchange_type='direct', durable=True)
-ch.exchange_declare(exchange='exchange.dlx', exchange_type='fanout', durable=True)
+ch.exchange_declare(exchange='exchange.principal', exchange_type='topic', durable=True)
+ch.exchange_declare(exchange='exchange.retry',     exchange_type='direct', durable=True)
+ch.exchange_declare(exchange='exchange.dlx',       exchange_type='fanout', durable=True)
+ch.exchange_declare(exchange='exchange.cluster',   exchange_type='direct', durable=True)  # líder -> workers
 
 # Filas principais
-ch.queue_declare(queue='fila.transacoes', durable=True, arguments={
-    'x-dead-letter-exchange': 'exchange.retry'
-})
-ch.queue_declare(queue='fila.auditoria', durable=True)
+ch.queue_declare(queue='fila.transacoes',   durable=True, arguments={'x-dead-letter-exchange': 'exchange.retry'})
+ch.queue_declare(queue='fila.auditoria',    durable=True)
 ch.queue_declare(queue='fila.notificacoes', durable=True)
+ch.queue_declare(queue='fila.dlq',          durable=True)
+
+# Fila de trabalho do cluster (líder distribui aqui; todos os workers consomem)
+ch.queue_declare(queue='fila.cluster.work', durable=True)
+ch.queue_bind(exchange='exchange.cluster', queue='fila.cluster.work', routing_key='work')
+
+# Bindings do principal
+ch.queue_bind(exchange='exchange.principal', queue='fila.transacoes',   routing_key='transacao.#')
+ch.queue_bind(exchange='exchange.principal', queue='fila.auditoria',    routing_key='audit.#')
+ch.queue_bind(exchange='exchange.principal', queue='fila.notificacoes', routing_key='notify.#')
 
 # DLQ
-ch.queue_declare(queue='fila.dlq', durable=True)
 ch.queue_bind(exchange='exchange.dlx', queue='fila.dlq')
 
-# Retry queues com TTL (30s, 60s, 120s)
-retry_ttls = [3000, 6000, 12000]  # em ms
+# Retries progressivos (3 tentativas)
+retry_ttls = [3000, 6000, 12000]
 for i, ttl in enumerate(retry_ttls, start=1):
     qname = f'fila.retry.{i}'
     ch.queue_declare(queue=qname, durable=True, arguments={
-        'x-dead-letter-exchange': 'exchange.transacoes',      # volta pro fluxo normal
-        'x-dead-letter-routing-key': 'transacao.transferencia',  # garante roteamento correto
+        'x-dead-letter-exchange': 'exchange.principal',
+        'x-dead-letter-routing-key': 'transacao.transferencia',
         'x-message-ttl': ttl
     })
     ch.queue_bind(exchange='exchange.retry', queue=qname, routing_key=f'retry.{i}')
 
-# Bindings da exchange.transacoes
-ch.queue_bind(exchange='exchange.transacoes', queue='fila.transacoes', routing_key='transacao.#')
-ch.queue_bind(exchange='exchange.transacoes', queue='fila.auditoria', routing_key='transacao.#')
-ch.queue_bind(exchange='exchange.transacoes', queue='fila.notificacoes', routing_key='transacao.#')
-
-print("Topology created.")
+print("Topologia Criada")
 conn.close()

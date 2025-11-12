@@ -29,10 +29,10 @@ cursor.executemany('''
 ''', clientes)
 
 contas = [
-    (1, 500.00, 'poupanca', 1),
-    (2, 1500.00, 'corrente', 2),
-    (3, 300.00, 'poupanca', 3),
-    (4, 800.00, 'corrente', 1)
+    (1, 1000000.00, 'poupanca', 1),
+    (2, 1000000.00, 'corrente', 2),
+    (3, 1000000.00, 'poupanca', 3),
+    (4, 1000000.00, 'corrente', 1)
 ]
 
 # Popular a tabela de contas

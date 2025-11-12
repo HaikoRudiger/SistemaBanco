@@ -23,3 +23,17 @@ python.exe -m pip install --upgrade pip
 ```
 pip install -r requirements.txt
 ```
+
+## Rodar banco de dados (inicialmente, vamos alterar depois)
+
+```
+cd SistemaBanco\Bancodedados\
+
+python criar_tabelas.py
+python popular_tabelas.py
+python visualizar_dados.py
+```
+
+### Extensão SQLite
+
+`SQLite Viewer`

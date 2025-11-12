@@ -214,3 +214,4 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+SistemaBanco/Bancodedados/banco_de_dados.db

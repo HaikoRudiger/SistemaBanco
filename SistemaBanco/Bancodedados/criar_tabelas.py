@@ -30,7 +30,6 @@ cursor.execute('''
         moeda INTEGER,
         FOREIGN KEY (cliente_id) REFERENCES cliente(id),
         FOREIGN KEY (moeda) REFERENCES moeda(id)
-        
     )
 ''')
 

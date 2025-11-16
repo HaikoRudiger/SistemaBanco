@@ -15,7 +15,7 @@ cursor.executemany('''
     VALUES (?, ?)
 ''', moedas)
 
-# Popular a tabela de clientes
+# Popular clientes
 clientes = [
     ('Daniel Neves', '123.456.789-00', 'daniel@example.com', '9999-9999'),
     ('Ana Julia da Cunha', '987.654.321-00', 'ana@example.com', '8888-8888'),
@@ -28,6 +28,7 @@ cursor.executemany('''
     VALUES (?, ?, ?, ?)
 ''', clientes)
 
+# Contas
 contas = [
     (1, 1000000.00, 'poupanca', 1),
     (2, 1000000.00, 'corrente', 2),
@@ -35,12 +36,10 @@ contas = [
     (4, 1000000.00, 'corrente', 1)
 ]
 
-# Popular a tabela de contas
 cursor.executemany('''
     INSERT INTO conta (cliente_id, saldo, tipo_conta, moeda)
     VALUES (?, ?, ?, ?)
 ''', contas)
-
 
 conexao.commit()
 conexao.close()

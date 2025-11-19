@@ -11,6 +11,9 @@ ch.exchange_declare(exchange='exchange.retry', exchange_type='direct', durable=T
 ch.exchange_declare(exchange='exchange.dlx', exchange_type='fanout', durable=True)
 ch.exchange_declare(exchange='exchange.cluster', exchange_type='direct', durable=True)
 
+# ⭐ Exchange para o Algoritmo Bully
+ch.exchange_declare(exchange='exchange.election', exchange_type='fanout', durable=True)
+
 # -------------------------
 # Filas principais
 # -------------------------
@@ -89,5 +92,5 @@ for i, ttl in enumerate(retry_ttls, start=1):
         routing_key=f'retry.{i}'
     )
 
-print("Topologia Criada")
+print("Topologia Criada (com Bully)")
 conn.close()

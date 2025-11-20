@@ -2,22 +2,18 @@ from connection import get_channel
 
 conn, ch = get_channel()
 
-# -------------------------
-# Exchanges
-# -------------------------
 
+# Exchanges
 ch.exchange_declare(exchange='exchange.principal', exchange_type='topic', durable=True)
 ch.exchange_declare(exchange='exchange.retry', exchange_type='direct', durable=True)
 ch.exchange_declare(exchange='exchange.dlx', exchange_type='fanout', durable=True)
 ch.exchange_declare(exchange='exchange.cluster', exchange_type='direct', durable=True)
 
-# ⭐ Exchange para o Algoritmo Bully
+# Exchange para o Algoritmo Bully
 ch.exchange_declare(exchange='exchange.election', exchange_type='fanout', durable=True)
 
-# -------------------------
-# Filas principais
-# -------------------------
 
+# Filas principais
 ch.queue_declare(
     queue='fila.transacoes',
     durable=True,
@@ -36,10 +32,8 @@ ch.queue_bind(
     routing_key='work'
 )
 
-# -------------------------
-# Bindings do principal
-# -------------------------
 
+# Bindings do principal
 ch.queue_bind(
     exchange='exchange.principal',
     queue='fila.transacoes',
@@ -58,19 +52,15 @@ ch.queue_bind(
     routing_key='notify.#'
 )
 
-# -------------------------
-# DLQ
-# -------------------------
 
+# DLQ
 ch.queue_bind(
     exchange='exchange.dlx',
     queue='fila.dlq'
 )
 
-# -------------------------
-# Retries progressivos (3 tentativas)
-# -------------------------
 
+# Retries progressivos (3 tentativas)
 retry_ttls = [3000, 6000, 12000]
 
 for i, ttl in enumerate(retry_ttls, start=1):

@@ -6,9 +6,10 @@ conn, ch = get_channel()
 
 def enviar_notificacao(payload):
     print(
-        f"Notificando cliente: ID {payload['id']} | "
-        f"Original: {payload['valor']} {payload['moeda']} | "
-        f"Convertido: {payload.get('valor_convertido')} {payload.get('moeda_base')} | "
+        f"Notificando cliente: ID {payload.get('id')} | "
+        f"Origem: {payload.get('valor')} {payload.get('moeda_origem')} → "
+        f"Destino: {payload.get('valor_destino')} {payload.get('moeda_destino')} | "
+        f"Taxa: {payload.get('fx_rate')} | "
         f"Status: {payload.get('status', 'OK')}"
     )
 

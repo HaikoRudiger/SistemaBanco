@@ -27,5 +27,5 @@ def enviar_operacao(conta_origem, conta_destino, valor, moeda="BRL"):
     print("Enviado:", payload)
 
 if __name__ == "__main__":
-    enviar_operacao(1, 2, 500, "BRL")
+    enviar_operacao(3, 4, 5000)
     conn.close()

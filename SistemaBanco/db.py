@@ -11,10 +11,6 @@ DB_PATH = os.path.join(BASE_DIR, "Bancodedados", "banco_de_dados.db")
 def get_conn():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
-# ==========================================================
-# CRIAÇÃO DA TABELA DE AUDITORIA (se não existir)
-# ==========================================================
-
 def criar_tabela_auditoria():
     try:
         conn = get_conn()
@@ -38,10 +34,6 @@ def criar_tabela_auditoria():
 
 # Executa no import
 criar_tabela_auditoria()
-
-# ==========================================================
-# SALVAR AUDITORIA
-# ==========================================================
 
 def registrar_auditoria(evento_dict: dict):
     """
@@ -72,11 +64,6 @@ def registrar_auditoria(evento_dict: dict):
         print("ERRO Auditoria DB:", e)
     except Exception as e:
         print("ERRO inesperado ao salvar auditoria:", e)
-
-
-# ==========================================================
-# FUNÇÕES DO SISTEMA BANCÁRIO
-# ==========================================================
 
 def obter_conta(conta_id):
     try:

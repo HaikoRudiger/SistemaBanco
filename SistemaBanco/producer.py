@@ -7,7 +7,7 @@ conn, ch = get_channel()
 def enviar_operacao(conta_origem, conta_destino, valor, moeda="BRL"):
     payload = {
         "id": str(uuid.uuid4()),
-        "conta_origem": conta_origem,    # IDs numéricos
+        "conta_origem": conta_origem,    
         "conta_destino": conta_destino,
         "valor": valor,
         "moeda": moeda,

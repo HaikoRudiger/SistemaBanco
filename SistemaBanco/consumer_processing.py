@@ -1,4 +1,3 @@
-# consumer_processing.py
 import json
 import os
 import time
@@ -143,8 +142,6 @@ def processar_operacao(payload):
         # erro de regra → DLQ
         raise ValueError(str(e))
 
-
-
 # FUNCIONALIDADE DE PUBLICAÇÃO NO RABBITMQ
 def publicar(ch, rk, payload, headers=None):
     ch.basic_publish(
@@ -157,8 +154,6 @@ def publicar(ch, rk, payload, headers=None):
             headers=headers or {},
         ),
     )
-
-
 
 # WORKER – CONSUMO DA FILA DE TRABALHO
 def worker_consume():
@@ -177,9 +172,8 @@ def worker_consume():
         retries = headers.get("x-retries", 0)
 
         try:
-            # ----------------------------------------
+
             # FX baseado nas MOEDAS das CONTAS
-            # ----------------------------------------
             conta_origem = int(data["conta_origem"])
             conta_destino = int(data["conta_destino"])
 
@@ -316,9 +310,8 @@ def worker_consume():
     ch_w.start_consuming()
 
 
-# ==========================================================
+
 # LÍDER – EXCLUSIVE CONSUMER
-# ==========================================================
 # variáveis globais para o Bully + heartbeat
 AVAILABLE_PORTS = [5501, 5502, 5503, 5504, 5505]
 HEARTBEAT_INTERVAL = 5
@@ -390,9 +383,8 @@ def leader_consume():
             pass
 
 
-# ==========================================================
+
 # HEARTBEAT TCP – monitor de atividade das nodes
-# ==========================================================
 def heartbeat_server():
     """
     Cada instância pega uma porta exclusiva da lista AVAILABLE_PORTS.
@@ -476,9 +468,7 @@ def heartbeat_client(my_port):
         time.sleep(HEARTBEAT_INTERVAL)
 
 
-# ==========================================================
 # ALGORITMO BULLY (mensagens ELECTION / OK / COORDINATOR)
-# ==========================================================
 def send_election(ch):
     global election_in_progress
     election_in_progress = True
@@ -602,9 +592,7 @@ def bully_consumer():
     ch.start_consuming()
 
 
-# ==========================================================
 # LOOP PRINCIPAL
-# ==========================================================
 def election_loop():
     # Worker sempre ligado
     threading.Thread(target=worker_consume, daemon=True).start()
@@ -627,10 +615,6 @@ def election_loop():
 
         time.sleep(random.uniform(2, 4))
 
-
-# ==========================================================
-# MAIN
-# ==========================================================
 if __name__ == "__main__":
     print(f"[{SERVICE_ID}] inicializado (Bully + FX + DB + Cripto + Heartbeat)")
     election_loop()

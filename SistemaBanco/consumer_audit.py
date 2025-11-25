@@ -12,7 +12,7 @@ def print_banner(title):
 def imprimir_auditoria(data):
     evento = data.get("evento")
 
-    print_banner("📘 EVENTO DE AUDITORIA")
+    print_banner("EVENTO DE AUDITORIA")
 
     print(f"ID da Transação : {data.get('id')}")
     print(f"Evento          : {evento}")
@@ -32,7 +32,7 @@ def imprimir_auditoria(data):
 
     # Pós-processamento
     if evento == "pos-processamento":
-        print("Status          : PROCESSADO ✔️")
+        print("Status          : PROCESSADO")
 
     # Retry
     if evento == "retry":
@@ -70,7 +70,7 @@ def callback(ch, method, properties, body):
             ch.basic_ack(delivery_tag=method.delivery_tag)
             return
 
-        # ✔ Eventos seguros — pode salvar no SQLite
+        #Eventos seguros — pode salvar no SQLite
         registrar_auditoria(data)
         imprimir_auditoria(data)
 

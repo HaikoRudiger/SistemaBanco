@@ -8,8 +8,6 @@ ch.exchange_declare(exchange='exchange.principal', exchange_type='topic', durabl
 ch.exchange_declare(exchange='exchange.retry', exchange_type='direct', durable=True)
 ch.exchange_declare(exchange='exchange.dlx', exchange_type='fanout', durable=True)
 ch.exchange_declare(exchange='exchange.cluster', exchange_type='direct', durable=True)
-
-# Exchange para o Algoritmo Bully
 ch.exchange_declare(exchange='exchange.election', exchange_type='fanout', durable=True)
 
 

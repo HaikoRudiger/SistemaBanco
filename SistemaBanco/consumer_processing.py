@@ -243,7 +243,7 @@ def worker_consume():
             retries += 1
 
             if retries > MAX_RETRIES:
-                # 🔥 falha definitiva (não tenta mais)
+                # falha definitiva (não tenta mais)
                 publicar(
                     ch,
                     "audit.falha",
@@ -262,7 +262,7 @@ def worker_consume():
                 )
                 ch.basic_ack(method.delivery_tag)
             else:
-                # 🟧 tentativa de retry com TTL
+                # tentativa de retry com TTL
                 ttl_ms = RETRY_TTLS_MS.get(retries)
                 rk = f"retry.{retries}"
 

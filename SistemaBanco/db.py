@@ -4,27 +4,81 @@ import os
 
 _DB_LOCK = Lock()
 
-# Caminho absoluto: SistemaBanco/Bancodedados/banco_de_dados.db
+# Caminho absoluto
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "Bancodedados", "banco_de_dados.db")
 
-
 def get_conn():
-    """
-    Cria a conexão SQLite com check_same_thread=False
-    para permitir uso em threads paralelos.
-    """
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
+# ==========================================================
+# CRIAÇÃO DA TABELA DE AUDITORIA (se não existir)
+# ==========================================================
+
+def criar_tabela_auditoria():
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS auditoria (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                transacao_id TEXT,
+                evento TEXT,
+                servico TEXT,
+                detalhes TEXT,
+                timestamp TEXT
+            )
+        """)
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print("ERRO ao criar tabela auditoria:", e)
+
+# Executa no import
+criar_tabela_auditoria()
+
+# ==========================================================
+# SALVAR AUDITORIA
+# ==========================================================
+
+def registrar_auditoria(evento_dict: dict):
+    """
+    Salva eventos seguros no banco.
+    NÃO será chamada para retry / falha-lógica / falha-banco-definitiva.
+    """
+    try:
+        with _DB_LOCK:
+            conn = get_conn()
+            cur = conn.cursor()
+
+            cur.execute("""
+                INSERT INTO auditoria (transacao_id, evento, servico, detalhes, timestamp)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                evento_dict.get("id"),
+                evento_dict.get("evento"),
+                evento_dict.get("servico"),
+                str(evento_dict),
+                evento_dict.get("ts"),
+            ))
+
+            conn.commit()
+            conn.close()
+
+    except sqlite3.OperationalError as e:
+        # Banco travado → não salvar auditoria
+        print("ERRO Auditoria DB:", e)
+    except Exception as e:
+        print("ERRO inesperado ao salvar auditoria:", e)
 
 
-# FUNÇÕES DE ACESSO AO BANCO - TODAS COM TRATAMENTO DE ERRO CORRETAMENTE
+# ==========================================================
+# FUNÇÕES DO SISTEMA BANCÁRIO
+# ==========================================================
 
 def obter_conta(conta_id):
-    """
-    Retorna os dados da conta.
-    Erros SQLite → RuntimeError → RETRY
-    """
     try:
         with _DB_LOCK:
             conn = get_conn()
@@ -42,10 +96,6 @@ def obter_conta(conta_id):
 
 
 def atualizar_saldo(conta_id, novo_saldo):
-    """
-    Atualiza o saldo de uma conta.
-    Erros SQLite → RuntimeError → RETRY
-    """
     try:
         with _DB_LOCK:
             conn = get_conn()
@@ -62,66 +112,49 @@ def atualizar_saldo(conta_id, novo_saldo):
 
 
 def registrar_transacao(origem, destino, valor_criptografado, tipo):
-    """
-    Registra uma transação no histórico.
-    Erros SQLite → RuntimeError → RETRY
-    """
     try:
         with _DB_LOCK:
             conn = get_conn()
             cur = conn.cursor()
-            cur.execute(
-                """
-                INSERT INTO transacao (conta_id_origem, conta_id_destino, valor, tipo_transacao)
+            cur.execute("""
+                INSERT INTO transacao 
+                (conta_id_origem, conta_id_destino, valor, tipo_transacao)
                 VALUES (?, ?, ?, ?)
-                """,
-                (origem, destino, valor_criptografado, tipo),
-            )
+            """, (origem, destino, valor_criptografado, tipo))
             conn.commit()
             conn.close()
-
     except (sqlite3.Error, sqlite3.OperationalError, sqlite3.DatabaseError) as e:
         raise RuntimeError(f"DB_LOCKED: {e}")
 
 
 def obter_codigo_moeda_conta(conta_id: int) -> str:
-    """
-    Retorna o código da moeda da conta (BRL, USD, EUR, etc.)
-    baseado na tabela 'moeda'.
-    """
     try:
         with _DB_LOCK:
             conn = get_conn()
             cur = conn.cursor()
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT m.nome, m.simbolo
                 FROM conta c
                 JOIN moeda m ON m.id = c.moeda
                 WHERE c.id = ?
-                """,
-                (conta_id,),
-            )
+            """, (conta_id,))
             row = cur.fetchone()
             conn.close()
-
     except (sqlite3.Error, sqlite3.OperationalError, sqlite3.DatabaseError) as e:
         raise RuntimeError(f"DB_LOCKED: {e}")
 
     if row is None:
         raise ValueError(f"Conta {conta_id} não encontrada para obter moeda")
 
-    nome, simbolo = row  # exemplo: ("Real", "R$")
+    nome, simbolo = row
+    nome = nome.lower()
+    simbolo = simbolo.upper()
 
-    # Mapeamentos aceitos
-    nome_lower = (nome or "").lower()
-    simbolo_upper = (simbolo or "").upper()
-
-    if "real" in nome_lower or simbolo_upper in ("BRL", "R$"):
+    if "real" in nome or simbolo in ("BRL", "R$"):
         return "BRL"
-    if "dólar" in nome_lower or "dolar" in nome_lower or simbolo_upper in ("USD", "US$"):
+    if "dólar" in nome or "dolar" in nome or simbolo in ("USD", "US$"):
         return "USD"
-    if "euro" in nome_lower or simbolo_upper in ("EUR", "€"):
+    if "euro" in nome or simbolo in ("EUR", "€"):
         return "EUR"
 
-    return simbolo_upper or "USD"
+    return simbolo or "USD"
